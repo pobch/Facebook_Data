@@ -1,0 +1,185 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Explore and Visualize (EDA)
+## Plot 24 graphs (24 Facebook pages) :
+```{r}
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+
+```
+
+Note : set working directory before running this code below
+```{r}
+
+# All Facebook pages
+pages = c('DramaAdd', 'ejeab', 'cartooneggcat', 'BBCThai', 'khobsanam', '1447102878929950',
+          'powerofhusbands', 'basementkaraoke', 'cartoon5natee', 'AjahnBuddhadasa', 'Toodsdiary',
+          'ceclip', 'beargirlfriend', 'jaytherabbitofficial', 'Darlingboredom', 'v.vajiramedhi', 
+          '334236760084743', 'kingdomoftigers', 'underbedstar', 'pantipded', 'Pantip.KratooDed', 
+          'nut.ped', '9gaginthai', 'in.one.zaroop')
+
+indx = 1
+graph.list = list() # list of ggplot results
+allpages = data.frame()
+
+# create graphs for each page :
+for (page in pages){
+  # cleaned ASCII characters in ID-MSG-LINK csv files by python, saved as *****IDnoASCII.csv, then run this :
+  df = read.csv(paste0(page, 'IDnoASCII.csv'), fileEncoding = 'UTF-8-BOM', stringsAsFactors = F)
+  tsdf = read.csv(paste0(page, '.csv'), fileEncoding = 'UTF-8-BOM', stringsAsFactors = F)
+  
+  # transform string to date format :
+  df$created_time = as.POSIXct(df$created_time, format='%Y-%m-%dT%H:%M:%S%z')
+  df$time_checked = as.POSIXct(df$time_checked, format = '%Y-%m-%d %H:%M:%S')
+  tsdf$created_time = as.POSIXct(tsdf$created_time, format='%Y-%m-%dT%H:%M:%S%z')
+  tsdf$time_checked = as.POSIXct(tsdf$time_checked, format = '%Y-%m-%d %H:%M:%S')
+  
+  # remove unwanted column, then unique by 'label1' column :
+  df$message = NULL
+  df = df %>% 
+    distinct(label1, .keep_all = T)
+  
+  # remove minute and second of 'time_checked' column :
+  df$time_checked = as.POSIXct(floor(as.numeric(df$time_checked)/(60*60))*(60*60), 
+                               origin = '1970-01-01')
+  tsdf$time_checked = as.POSIXct(floor(as.numeric(tsdf$time_checked)/(60*60))*(60*60), 
+                                 origin = '1970-01-01')
+  
+  # add a new column which is the estimated value of 'reaction_count' after 1 hour of 'created_time' :
+  hourcount = function(row){
+    hour = 1*(60*60) ######### changeable 'hour'
+    shifted.time = as.numeric(row$created_time) + hour
+    hour.ratio = shifted.time / (60*60) - floor(shifted.time / (60*60))
+    next.timestamp = ceiling(shifted.time / (60*60)) * (60*60)
+    prev.timestamp = floor(shifted.time / (60*60)) * (60*60)
+    next.count = tsdf[tsdf$time_checked == as.POSIXct(next.timestamp, origin = '1970-01-01') &
+                        tsdf$label1 == row$label1, 'reaction_count'] ######## changeable 'count'
+    prev.count = tsdf[tsdf$time_checked == as.POSIXct(prev.timestamp, origin = '1970-01-01') &
+                        tsdf$label1 == row$label1, 'reaction_count'] ######## changeable 'count'
+    if (length(next.count) == 0 | length(prev.count) == 0){
+      return(NA)
+    }
+    else{
+      count = prev.count + (hour.ratio * (next.count - prev.count))
+      return(count)
+    }
+  }
+  for (i in 1:nrow(df)){
+    df[i, 'onehour_count'] = hourcount(df[i,])
+  }
+  
+  # add 'time of the day' (tod) column :
+  subdf = subset(df, created_time >= as.POSIXct('2016-11-16 10:05') & 
+                   created_time <= as.POSIXct('2016-11-25 12:50'))
+  subdf$created_tod = as.POSIXct(as.numeric(subdf$created_time) %% (60*60*24), origin = '2016-11-01')
+  for (i in 1:nrow(subdf)){
+    if (subdf$created_tod[i] > as.POSIXct('2016-11-01 23:59:50')){
+      subdf$created_tod[i] = subdf$created_tod[i] - (24*60*60)
+    }
+  }
+  
+  # add 'days of the week' (dow) column :
+  subdf$created_dow = as.POSIXlt(subdf$created_time)
+  subdf$created_dow = subdf$created_dow$wday
+  subdf$created_dow = ifelse(subdf$created_dow == 0, 'Sun', subdf$created_dow)
+  subdf$created_dow = ifelse(subdf$created_dow == 1, 'Mon', subdf$created_dow)
+  subdf$created_dow = ifelse(subdf$created_dow == 2, 'Tue', subdf$created_dow)
+  subdf$created_dow = ifelse(subdf$created_dow == 3, 'Wed', subdf$created_dow)
+  subdf$created_dow = ifelse(subdf$created_dow == 4, 'Thu', subdf$created_dow)
+  subdf$created_dow = ifelse(subdf$created_dow == 5, 'Fri', subdf$created_dow)
+  subdf$created_dow = ifelse(subdf$created_dow == 6, 'Sat', subdf$created_dow)
+  # Group: Mon-to-Fri and Sat-to-Sun
+  subdf$created_dow_cat = ifelse(subdf$created_dow %in% c('Sat', 'Sun') , 'S-S', 'M-F')
+  
+  
+  # All pages rbind to one dataframe
+  allpages = bind_rows(allpages, subdf)
+  
+  
+  # Plots
+  graph = ggplot(data = subdf, aes(x= created_tod, y=onehour_count)) +
+    geom_point(aes(color = created_dow_cat), size = 2) +
+    scale_x_datetime(date_labels = '%H:%M', date_breaks = 'hour',
+                     limits = c(as.POSIXct('2016-11-01'), as.POSIXct('2016-11-02'))) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.3)) +
+    labs(title = paste0('Page ID : ',page), subtitle = '1 Point = 1 Post', 
+         x = "Created time of the day", y = "Reaction count after 1 hour of created time",
+         color = 'Days of the week') +
+    scale_color_hue(labels = c('Mon-Fri', 'Sat-Sun'))
+  
+  # save to list :
+  graph.list[[indx]] = graph
+  indx = indx + 1
+}
+
+
+```
+
+Print in markdown :
+```{r}
+
+for(i in 1:length(graph.list)){
+  print(graph.list[[i]])
+}
+
+```
+
+Write all plots into a pdf file:
+```{r}
+
+pdf(file = 'Plots_24pages.pdf', width = 16, height = 9, onefile = T)
+i = 1
+while(i <= length(graph.list)){
+  print(grid.arrange(grobs = graph.list[i:(i+5)], nrow = 3, ncol = 2))
+  i = i + 6
+}
+dev.off()
+
+```
+
+## Combine all plots into one graph :
+I use a linear transformation to transform each graph's mean and sd to 0.5 and 0.1 respectively.
+Note that this is not a good analysis method at all, I'm just curious and want to practice my coding skill.
+```{r}
+allpages2 = allpages
+# There are identical page names, so I have to seperate them before doing linear transformation :
+allpages2[grep('543209025719472', allpages2$id, value = F), 'from'] = 'กระทู้เด็ด Pantip'
+  allpages2 = allpages2 %>%
+  subset(!is.na(onehour_count)) %>% 
+  group_by(from) %>% 
+  mutate(onehour_zscore = (onehour_count - mean(onehour_count)) / sd(onehour_count)) %>% 
+  ungroup()
+allpages2$onehour_norm = 0.5 + (0.1 * allpages2$onehour_zscore)
+
+```
+
+Plot:
+```{r}
+graph2 = ggplot(data = allpages2, aes(x= created_tod, y=onehour_norm)) +
+    geom_point(aes(color = created_dow_cat), size = 2) +
+    geom_hline(yintercept = 0.5, linetype = 2) +
+    scale_x_datetime(date_labels = '%H:%M', date_breaks = 'hour',
+                     limits = c(as.POSIXct('2016-11-01'), as.POSIXct('2016-11-02'))) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.3)) +
+    labs(title = 'All pages in one plot', subtitle = '1 Point = 1 Post, Mean = 0.5, SD = 0.1', 
+         x = "Created time of the day", y = "Reaction count after 1 hour of created time",
+         color = 'Days of the week') +
+    scale_color_hue(labels = c('Mon-Fri', 'Sat-Sun'))
+print(graph2)
+
+```
+
+To PDF:
+```{r}
+pdf(file = 'Plot_AllinOne.pdf', width = 16, height = 9, onefile = T)
+print(graph2)
+dev.off()
+
+```
+
+
+

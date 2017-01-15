@@ -1,0 +1,115 @@
+---
+title: "R Notebook"
+output:
+  html_document: default
+  html_notebook: default
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+---
+
+# Explore 'Reaction' and 'Comment' changing rate of each post
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(RColorBrewer)
+library(gridExtra)
+
+```
+
+
+```{r}
+# All pages I want to explore :
+pages = c('DramaAdd', 'ejeab', 'cartooneggcat', 'BBCThai', 'khobsanam', '1447102878929950',
+          'powerofhusbands', 'basementkaraoke', 'cartoon5natee', 'AjahnBuddhadasa', 
+          'Toodsdiary', 'ceclip', 'beargirlfriend', 'jaytherabbitofficial', 
+          'Darlingboredom', 'v.vajiramedhi', '334236760084743', 'kingdomoftigers', 
+          'underbedstar', 'pantipded', 'Pantip.KratooDed', 'nut.ped', '9gaginthai', 'in.one.zaroop')
+
+# Print result plots in PDF format :
+pdf('Plots_ReactChangeRate.pdf', onefile = T, width = 16, height = 9)
+
+# 'Reaction' and 'Comment' changing rate of each post :
+for (page in pages){
+  setwd('E:/My Proj/FB_Stat')
+  df = read.csv(paste0(page, '.csv'), fileEncoding = 'UTF-8-BOM', stringsAsFactors = F)
+  # transform strings to datetime format :
+  df$created_time = as.POSIXct(strptime(df$created_time, format='%Y-%m-%dT%H:%M:%S%z'))
+  df$time_checked = as.POSIXct(strptime(df$time_checked, format = '%Y-%m-%d %H:%M:%S'))
+  # focus on 17 Nov 2016 (all posts in 1 day) :
+  day17 = subset(df, time_checked >= as.POSIXct('2016-11-16 21:59') & time_checked <= as.POSIXct('2016-11-18 02:05'))
+  tmp = data.frame(time_checked = unique(day17$created_time))
+  # add new rows showing each post's counts at created time are equal to 0 :
+  tmp[colnames(day17)[colnames(day17) != 'time_checked']] = NA
+  tmp[c('like_count', 'comment_count', 'share_count', 'reaction_count')] = 0
+  tmp$created_time = tmp$time_checked
+  tmp2 = day17 %>% 
+    distinct(created_time, .keep_all = T)
+  tmp$label1 = tmp2[tmp2$created_time == tmp$created_time , 'label1']
+  tmp$label2 = tmp2[tmp2$created_time == tmp$created_time , 'label2']
+  tmp$type = tmp2[tmp2$created_time == tmp$created_time , 'type']
+  tmp$id = tmp2[tmp2$created_time == tmp$created_time , 'id']
+  tmp$from = tmp2$from
+  day17 = rbind(day17, tmp)
+  # sort data by timestamps :
+  day17sort = day17 %>% 
+    arrange(label1, time_checked)
+  # add 'reactdiff' and 'comdiff' columns to show a different number of counts between an hour : 
+  day17sort$reaction_count_shift = day17sort$reaction_count
+  day17sort$comment_count_shift = day17sort$comment_count
+  for (i in 2:nrow(day17sort)){
+    if (day17sort[i, 'label1'] != day17sort[i-1, 'label1']){
+      day17sort[i-1, 'reaction_count_shift'] = 0
+      day17sort[i-1, 'comment_count_shift'] = 0
+    }
+  }
+  day17sort$reaction_count_shift = c(0,day17sort[-nrow(day17sort), 'reaction_count_shift'])
+  day17sort$comment_count_shift = c(0,day17sort[-nrow(day17sort), 'comment_count_shift'])
+  day17sort$reactdiff = day17sort$reaction_count - day17sort$reaction_count_shift
+  day17sort$comdiff = day17sort$comment_count - day17sort$comment_count_shift
+  
+  # Plot 'reaction' changing rate :
+  g4 = ggplot(data = subset(day17sort, created_time >= '2016-11-16 21:05'),
+              aes(x = time_checked, y = reactdiff, group = label1)) +
+          geom_line(color = 'firebrick1', alpha = 0.6, size = 1) +
+          geom_point(color = 'salmon', alpha = 0.7, size = 2) +
+          scale_x_datetime(date_labels = '%d--%H:%M', 
+                           date_breaks = 'hours',
+                           limits = c(as.POSIXct('2016-11-16 21:00'), as.POSIXct('2016-11-18 3:00'))) +
+          theme(axis.text.x = element_text(angle = 90, vjust = 0.3)) +
+          labs(title = 'Changing Rate of Reaction Counts, 17 Nov 2016', 
+               subtitle = paste0('1 line = 1 post, Page : ', page),
+               x = NULL, 
+               y = 'Reaction number increased from last hour')
+  
+  # Plot 'comment' changing rate :
+  g5 = ggplot(data = subset(day17sort, created_time >= '2016-11-16 21:05'),
+              aes(x = time_checked, y = comdiff, group = label1)) +
+          geom_line(color = 'firebrick1', alpha = 0.6, size = 1) +
+          geom_point(color = 'salmon', alpha = 0.7, size = 2) +
+          scale_x_datetime(date_labels = '%d--%H:%M', 
+                           date_breaks = 'hours',
+                           limits = c(as.POSIXct('2016-11-16 21:00'), as.POSIXct('2016-11-18 3:00'))) +
+          theme(axis.text.x = element_text(angle = 90, vjust = 0.3)) +
+          labs(title = 'Changing Rate of Comment Counts, 17 Nov 2016', 
+               subtitle = paste0('1 line = 1 post, Page : ', page),
+               x = NULL, 
+               y = 'Comment number increased from last hour')
+  
+  grid.arrange(g4, g5, ncol = 1)
+}
+dev.off()
+
+
+
+
+
+```
+
+
+
+
