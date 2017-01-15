@@ -5,6 +5,7 @@ I tried to answer this question by collecting and analizing data from many famou
 In this repo, there are :
 - A Python script to hourly scrape data of famous Thai pages by connecting to Facebook Graph API. 
 - A Python script for cleaning data.
-- A R script for wrangling and visualizing data.
+- R scripts for wrangling and visualizing data.
+- Results
 
 This is my first personal project. If anyone has any advice/comment/feedback, please dont't hesitate to tell me. THX :) 
